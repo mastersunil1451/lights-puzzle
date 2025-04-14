@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Light Out Puzzle - Pattern Match</title>
+  <title>Light Out Puzzle - 4x4 Mode</title>
   <style>
     body {
       margin: 0;
@@ -35,7 +35,6 @@
       display: none;
       padding-top: 2vh;
     }
-    /* Style for the back button in game area */
     #backGameBtn {
       position: absolute;
       top: 10px;
@@ -45,16 +44,16 @@
       margin: 1rem auto;
     }
     .title {
-      font-size: 5vw; /* Responsive font size */
+      font-size: 5vw;
       margin-bottom: 0.5rem;
     }
     #grid, #targetGrid {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      grid-template-rows: repeat(5, 1fr);
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(4, 1fr);
       gap: 0.5rem;
       width: 90vw; 
-      max-width: 300px;
+      max-width: 240px;
       margin: 1rem auto;
     }
     .cell {
@@ -62,7 +61,8 @@
       background: #555;
       border: 0.2rem solid #333;
       cursor: pointer;
-      transition: background 0.3s;
+      transition: background 0.3s, transform 0.2s;
+      font-size: 1.2rem;
     }
     .on {
       background: yellow;
@@ -72,6 +72,13 @@
     }
     #winOverlay, #howToPlayOverlay {
       display: none;
+    }
+    #hintBtn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: #444;
+      border: 1px solid #666;
     }
   </style>
 </head>
@@ -85,10 +92,10 @@
 
   <!-- Game Container -->
   <div id="gameContainer">
-    <!-- Back Button inside Game Area -->
     <button id="backGameBtn">Back to Menu</button>
+    <button id="hintBtn">💡 Hint</button>
     <div id="targetContainer">
-      <div class="title">Target Pattern</div>
+      <div class="title">Target</div>
       <div id="targetGrid"></div>
     </div>
     <div id="gridContainer">
@@ -99,7 +106,7 @@
 
   <!-- Win Overlay -->
   <div id="winOverlay">
-    <h2>Congratulations! You matched the pattern!</h2>
+    <h2>Pattern Matched!</h2>
     <button id="restartBtn">Restart</button>
     <button id="backBtn">Back</button>
   </div>
@@ -108,22 +115,20 @@
   <div id="howToPlayOverlay">
     <div style="max-width: 400px; padding:20px; background:#333; border-radius:8px;">
       <h2>How to Play</h2>
-      <p>
-        Yeh puzzle grid based hai. Tumhe upar diye gaye target pattern ke hisaab se apni grid ko match karna hai.
-      </p>
-      <p>
-        Har cell pe click karne se us cell aur uske adjacent (up, down, left, right) cells toggle hote hain.
-      </p>
-      <p>Objective: Target pattern ke saare lights match karna hai.</p>
+      <p>1. Match your grid to the target pattern shown above</p>
+      <p>2. Clicking a cell toggles it and its adjacent cells (up/down/left/right)</p>
+      <p>3. Yellow = ON, Black = OFF</p>
+      <p>4. Use the hint button 💡 when stuck</p>
       <button id="closeHowToBtn">Close</button>
     </div>
   </div>
 
   <script>
-    const gridSize = 5;
+    const gridSize = 4;
     let targetPattern = [];
     let playerGrid = [];
-    let scrambleMoves = 10; // number of random moves for target pattern
+    let scrambleMoves = 8;
+    let solutionSteps = [];
 
     const menu = document.getElementById('menu');
     const startGameBtn = document.getElementById('startGameBtn');
@@ -137,136 +142,135 @@
     const howToPlayOverlay = document.getElementById('howToPlayOverlay');
     const closeHowToBtn = document.getElementById('closeHowToBtn');
     const backGameBtn = document.getElementById('backGameBtn');
+    const hintBtn = document.getElementById('hintBtn');
 
-    // Initialize grid data & UI for player grid
     function initPlayerGrid() {
-      playerGrid = [];
+      playerGrid = Array.from({ length: gridSize }, () => 
+        Array(gridSize).fill(0)
+      );
       gridDiv.innerHTML = "";
+      
       for (let i = 0; i < gridSize; i++) {
-        let row = [];
         for (let j = 0; j < gridSize; j++) {
-          row.push(0); // 0 means off, 1 means on
-          const cellDiv = document.createElement('div');
-          cellDiv.classList.add('cell', 'off');
-          cellDiv.dataset.row = i;
-          cellDiv.dataset.col = j;
-          cellDiv.addEventListener('click', cellClick);
-          gridDiv.appendChild(cellDiv);
+          const cell = document.createElement('div');
+          cell.classList.add('cell', 'off');
+          cell.dataset.row = i;
+          cell.dataset.col = j;
+          cell.addEventListener('click', cellClick);
+          gridDiv.appendChild(cell);
         }
-        playerGrid.push(row);
       }
     }
 
-    // Initialize target grid data & UI
     function initTargetGrid() {
-      targetPattern = [];
+      targetPattern = Array.from({ length: gridSize }, () => 
+        Array(gridSize).fill(0)
+      );
+      solutionSteps = [];
       targetGridDiv.innerHTML = "";
-      // Start with all off
+      
+      // Create visible target cells
       for (let i = 0; i < gridSize; i++) {
-        let row = [];
         for (let j = 0; j < gridSize; j++) {
-          row.push(0);
-          const cellDiv = document.createElement('div');
-          cellDiv.classList.add('cell', 'off');
-          targetGridDiv.appendChild(cellDiv);
+          const cell = document.createElement('div');
+          cell.classList.add('cell', 'off');
+          targetGridDiv.appendChild(cell);
         }
-        targetPattern.push(row);
       }
-      // Apply random moves to target pattern to create a solvable pattern
+
+      // Generate solvable pattern
+      const tempGrid = targetPattern.map(row => [...row]);
       for (let m = 0; m < scrambleMoves; m++) {
         const randRow = Math.floor(Math.random() * gridSize);
         const randCol = Math.floor(Math.random() * gridSize);
-        // Toggle the cell and its adjacent in targetPattern
-        toggleCellInGrid(targetPattern, randRow, randCol);
-        toggleCellInGrid(targetPattern, randRow - 1, randCol);
-        toggleCellInGrid(targetPattern, randRow + 1, randCol);
-        toggleCellInGrid(targetPattern, randRow, randCol - 1);
-        toggleCellInGrid(targetPattern, randRow, randCol + 1);
+        solutionSteps.push([randRow, randCol]);
+        toggleCell(tempGrid, randRow, randCol);
       }
-      // Update target grid UI
+      
+      targetPattern = tempGrid;
       updateGridUI(targetPattern, targetGridDiv);
     }
 
-    // Toggle cell in a given grid (if valid index)
-    function toggleCellInGrid(grid, row, col) {
-      if (row < 0 || row >= gridSize || col < 0 || col >= gridSize) return;
-      grid[row][col] = grid[row][col] === 0 ? 1 : 0;
-    }
-
-    // Update UI for a given grid and container
-    function updateGridUI(grid, container) {
-      // Assuming container has gridSize*gridSize children in order
-      let idx = 0;
-      for (let i = 0; i < gridSize; i++) {
-        for (let j = 0; j < gridSize; j++) {
-          const cellDiv = container.children[idx];
-          if (grid[i][j] === 1) {
-            cellDiv.classList.remove('off');
-            cellDiv.classList.add('on');
-          } else {
-            cellDiv.classList.remove('on');
-            cellDiv.classList.add('off');
-          }
-          idx++;
+    function toggleCell(grid, row, col) {
+      const directions = [
+        [0, 0],
+        [-1, 0],
+        [1, 0],
+        [0, -1],
+        [0, 1]
+      ];
+      
+      directions.forEach(([dx, dy]) => {
+        const newRow = row + dx;
+        const newCol = col + dy;
+        if (newRow >= 0 && newRow < gridSize && newCol >= 0 && newCol < gridSize) {
+          grid[newRow][newCol] = 1 - grid[newRow][newCol];
         }
-      }
+      });
     }
 
-    // When player clicks on a cell in their grid
+    function updateGridUI(grid, container) {
+      Array.from(container.children).forEach((cell, index) => {
+        const row = Math.floor(index / gridSize);
+        const col = index % gridSize;
+        cell.className = `cell ${grid[row][col] ? 'on' : 'off'}`;
+      });
+    }
+
     function cellClick(e) {
       const row = parseInt(e.target.dataset.row);
       const col = parseInt(e.target.dataset.col);
-      // Toggle the clicked cell and its adjacent cells in playerGrid
-      toggleCellInGrid(playerGrid, row, col);
-      toggleCellInGrid(playerGrid, row - 1, col);
-      toggleCellInGrid(playerGrid, row + 1, col);
-      toggleCellInGrid(playerGrid, row, col - 1);
-      toggleCellInGrid(playerGrid, row, col + 1);
+      toggleCell(playerGrid, row, col);
       updateGridUI(playerGrid, gridDiv);
-
-      // Check after every move if player's grid matches target pattern
+      
       if (checkMatch()) {
         winOverlay.style.display = 'flex';
       }
     }
 
-    // Check if playerGrid equals targetPattern
     function checkMatch() {
-      for (let i = 0; i < gridSize; i++) {
-        for (let j = 0; j < gridSize; j++) {
-          if (playerGrid[i][j] !== targetPattern[i][j]) return false;
-        }
-      }
-      return true;
+      return playerGrid.every((row, i) => 
+        row.every((cell, j) => cell === targetPattern[i][j])
+      );
     }
 
-    // Start game: hide menu, show game, initialize both grids
+    function showHint() {
+      if (solutionSteps.length === 0) return;
+      
+      const [hintRow, hintCol] = solutionSteps.pop();
+      const cell = gridDiv.querySelector(
+        `[data-row="${hintRow}"][data-col="${hintCol}"]`
+      );
+      
+      cell.style.transform = 'scale(1.1)';
+      cell.style.border = '2px solid red';
+      setTimeout(() => {
+        cell.style.transform = '';
+        cell.style.border = '';
+      }, 1000);
+    }
+
     function startGame() {
       menu.style.display = 'none';
       winOverlay.style.display = 'none';
       gameContainer.style.display = 'block';
-      initTargetGrid();  // generate target pattern
-      initPlayerGrid();  // player's grid starts solved (all off)
+      initTargetGrid();
+      initPlayerGrid();
     }
 
-    // Return to Main Menu from game area
     function backToMenu() {
       gameContainer.style.display = 'none';
-      winOverlay.style.display = 'none';
       menu.style.display = 'flex';
     }
 
-    // Event Listeners
+    // Event listeners
     startGameBtn.addEventListener('click', startGame);
-    howToPlayBtn.addEventListener('click', () => {
-      howToPlayOverlay.style.display = 'flex';
-    });
-    closeHowToBtn.addEventListener('click', () => {
-      howToPlayOverlay.style.display = 'none';
-    });
+    howToPlayBtn.addEventListener('click', () => howToPlayOverlay.style.display = 'flex');
+    closeHowToBtn.addEventListener('click', () => howToPlayOverlay.style.display = 'none');
     restartBtn.addEventListener('click', startGame);
     backBtn.addEventListener('click', backToMenu);
     backGameBtn.addEventListener('click', backToMenu);
+    hintBtn.addEventListener('click', showHint);
   </script>
 </body>
 </html>
